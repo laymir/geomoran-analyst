@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>GeoMoran Analyst</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#060d1b;--bg2:#0c1628;--bg3:#101e33;
+  --border:#162035;--border2:#1e3050;
+  --neon:#00d4ff;--neon2:#7c3aed;--neon3:#10b981;--neon4:#f59e0b;
+  --danger:#ef4444;--text:#e2e8f0;--text2:#94a3b8;--text3:#475569;
+  --font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;
+  --r:10px;--r2:16px;
+}
+html{font-size:14px}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+.shell{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+
+/* SIDEBAR */
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.sb-logo{padding:20px 20px 16px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(0,212,255,.05),transparent)}
+.sb-glyph{font-size:28px;margin-bottom:6px;filter:drop-shadow(0 0 8px rgba(0,212,255,.4))}
+.sb-title{font-size:1.2rem;font-weight:800;letter-spacing:-.5px;background:linear-gradient(90deg,#00d4ff,#7c3aed);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sb-sub{font-size:.7rem;color:var(--text3);margin-top:2px}
+.sb-body{padding:16px 14px;flex:1;display:flex;flex-direction:column;gap:18px}
+.s-lbl{font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.s-lbl::before{content:'';width:14px;height:1px;background:var(--border2)}
+.upload-zone{border:1.5px dashed var(--border2);border-radius:var(--r);padding:18px 12px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg3);position:relative}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--neon);background:rgba(0,212,255,.04)}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.upload-icon{font-size:20px;margin-bottom:5px;color:var(--text3)}
+.upload-text{font-size:.73rem;color:var(--text2);line-height:1.5}
+.upload-text strong{color:var(--neon)}
+.upload-hint{font-size:.63rem;color:var(--text3);margin-top:3px}
+.file-chip{display:flex;align-items:center;gap:7px;background:rgba(0,212,255,.07);border:1px solid rgba(0,212,255,.2);border-radius:8px;padding:7px 9px;margin-top:7px}
+.file-chip-name{font-size:.72rem;color:var(--text2);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.file-chip-rm{cursor:pointer;color:var(--text3);font-size:.75rem;flex-shrink:0}
+.file-chip-rm:hover{color:var(--danger)}
+.s-select,.s-input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 11px;color:var(--text);font-family:var(--font);font-size:.78rem;appearance:none;outline:none;transition:border-color .2s}
+.s-select:focus{border-color:var(--neon)}
+.s-wrap{position:relative}
+.s-wrap::after{content:'▾';position:absolute;right:9px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none;font-size:.75rem}
+.s-fl{font-size:.7rem;color:var(--text2);margin-bottom:4px}
+.s-slider{width:100%;accent-color:var(--neon);cursor:pointer}
+.btn-run{width:100%;padding:11px;border:none;border-radius:var(--r);background:linear-gradient(135deg,#0369a1,#1d4ed8);color:#fff;font-family:var(--font);font-size:.82rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .2s;box-shadow:0 0 20px rgba(0,212,255,.12)}
+.btn-run:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,212,255,.28)}
+.btn-run.loading{opacity:.7;pointer-events:none}
+.sb-foot{padding:13px;border-top:1px solid var(--border);font-size:.63rem;color:var(--text3);line-height:1.7}
+.spinner{display:none;width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* MAIN */
+.main{display:flex;flex-direction:column;min-height:100vh}
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:11px 26px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.tb-left{display:flex;align-items:center;gap:10px}
+.tb-title{font-size:.86rem;font-weight:600}
+.tb-badge{background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.2);color:var(--neon);font-size:.63rem;font-weight:600;padding:2px 8px;border-radius:20px;font-family:var(--mono)}
+.tb-right{display:flex;align-items:center;gap:8px}
+.tb-btn{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:5px 13px;border-radius:7px;font-size:.73rem;font-weight:500;cursor:pointer;transition:all .14s;display:flex;align-items:center;gap:5px;font-family:var(--font)}
+.tb-btn:hover{border-color:var(--neon);color:var(--neon)}
+#sDot{width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0}
+#sDot.ok{background:var(--neon3);box-shadow:0 0 5px var(--neon3)}
+#sDot.err{background:var(--danger)}
+#sTxt{font-size:.7rem;color:var(--text3)}
+.content{padding:26px;flex:1}
+
+/* WELCOME */
+.welcome{max-width:800px;margin:0 auto}
+.w-hero{background:linear-gradient(135deg,var(--bg2),var(--bg3));border:1px solid var(--border2);border-radius:var(--r2);padding:38px;margin-bottom:20px;position:relative;overflow:hidden}
+.w-hero::before{content:'';position:absolute;top:-40%;right:-5%;width:480px;height:480px;border-radius:50%;background:radial-gradient(circle,rgba(0,212,255,.06) 0%,transparent 65%);pointer-events:none}
+.w-eyebrow{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--neon);margin-bottom:12px;font-family:var(--mono)}
+.w-h1{font-size:2.2rem;font-weight:800;letter-spacing:-1.5px;line-height:1.1;margin-bottom:10px}
+.w-h1 span{background:linear-gradient(90deg,var(--neon),var(--neon2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.w-sub{font-size:.88rem;color:var(--text2);line-height:1.6;max-width:500px}
+.w-tags{display:flex;gap:7px;margin-top:18px;flex-wrap:wrap}
+.w-tag{background:var(--bg);border:1px solid var(--border2);color:var(--text2);font-size:.68rem;padding:3px 9px;border-radius:6px;font-family:var(--mono)}
+.w-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.wc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:18px;transition:border-color .2s,transform .18s}
+.wc:hover{border-color:var(--border2);transform:translateY(-2px)}
+.wc-ico{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1rem;margin-bottom:10px}
+.wc-ico.b{background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.2)}
+.wc-ico.p{background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.2)}
+.wc-ico.g{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2)}
+.wc h4{font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:5px}
+.wc p{font-size:.7rem;color:var(--text2);line-height:1.55}
+.w-ref{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:18px}
+.w-ref h3{font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:12px}
+.rt{width:100%;border-collapse:collapse;font-size:.73rem}
+.rt th{background:var(--bg3);color:var(--text3);padding:7px 13px;text-align:left;font-weight:600;font-size:.65rem;text-transform:uppercase;letter-spacing:.8px;border-bottom:1px solid var(--border)}
+.rt td{padding:8px 13px;color:var(--text2);border-bottom:1px solid var(--border)}
+.rt tr:last-child td{border-bottom:none}
+.rt tr:hover td{background:rgba(255,255,255,.02)}
+.tp{color:var(--neon3);font-weight:600}.tn{color:var(--neon4);font-weight:600}.tr{color:var(--text3);font-weight:600}
+
+/* RESULTS */
+.results{display:none}
+.mbar{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:18px}
+.mc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:15px 17px;position:relative;overflow:hidden;transition:border-color .2s}
+.mc:hover{border-color:var(--border2)}
+.mc-acc{position:absolute;top:0;left:0;right:0;height:2px}
+.mc-lbl{font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:7px}
+.mc-val{font-size:1.75rem;font-weight:700;letter-spacing:-1px;font-family:var(--mono);color:var(--text);line-height:1}
+.mc-sub{font-size:.66rem;color:var(--text3);margin-top:4px}
+.interp{border-radius:var(--r);padding:13px 16px;display:flex;align-items:flex-start;gap:11px;margin-bottom:18px;border:1px solid}
+.interp.pos{background:rgba(16,185,129,.05);border-color:rgba(16,185,129,.25)}
+.interp.neg{background:rgba(245,158,11,.05);border-color:rgba(245,158,11,.25)}
+.interp.rnd{background:rgba(71,85,105,.08);border-color:rgba(71,85,105,.25)}
+.i-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.interp.pos .i-dot{background:var(--neon3);box-shadow:0 0 5px var(--neon3)}
+.interp.neg .i-dot{background:var(--neon4);box-shadow:0 0 5px var(--neon4)}
+.interp.rnd .i-dot{background:var(--text3)}
+.i-title{font-size:.8rem;font-weight:600;margin-bottom:2px}
+.interp.pos .i-title{color:var(--neon3)}.interp.neg .i-title{color:var(--neon4)}.interp.rnd .i-title{color:var(--text2)}
+.i-body{font-size:.76rem;color:var(--text2);line-height:1.55}
+.cl-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:18px}
+.cl-chip{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:5px 11px;font-size:.71rem;color:var(--text2)}
+.cl-dot{width:8px;height:8px;border-radius:3px;flex-shrink:0}
+.cl-n{font-family:var(--mono);font-weight:600;color:var(--text)}
+.tabs-nav{display:flex;gap:3px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:3px;margin-bottom:18px;width:fit-content}
+.t-btn{padding:6px 16px;border:none;border-radius:7px;background:transparent;color:var(--text3);font-family:var(--font);font-size:.76rem;font-weight:500;cursor:pointer;transition:all .14s;white-space:nowrap}
+.t-btn.active{background:var(--bg3);color:var(--neon);box-shadow:0 1px 6px rgba(0,0,0,.3)}
+.t-btn:hover:not(.active){color:var(--text2);background:rgba(255,255,255,.02)}
+.tp-panel{display:none}.tp-panel.active{display:block}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.mcard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden}
+.mcard-hd{padding:11px 15px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:7px}
+.mcard-title{font-size:.78rem;font-weight:600;color:var(--text)}
+.mcard-sub{font-size:.66rem;color:var(--text3);margin-left:auto}
+.mdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.mwrap{height:390px}
+.ccrd{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;margin-bottom:14px}
+.ccrd-hd{padding:13px 17px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:7px}
+.ccrd-title{font-size:.8rem;font-weight:600;color:var(--text)}
+.tbl-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden}
+.dtbl{width:100%;border-collapse:collapse;font-size:.73rem}
+.dtbl th{background:var(--bg3);color:var(--text3);padding:9px 15px;text-align:left;font-weight:600;font-size:.64rem;text-transform:uppercase;letter-spacing:.8px;border-bottom:1px solid var(--border);position:sticky;top:0}
+.dtbl td{padding:8px 15px;color:var(--text2);border-bottom:1px solid var(--border)}
+.dtbl tr:last-child td{border-bottom:none}
+.dtbl tr:hover td{background:rgba(255,255,255,.02)}
+.mono{font-family:var(--mono);color:var(--text)}
+.tbl-scroll{max-height:450px;overflow-y:auto}
+.ctag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;font-weight:600;font-size:.68rem}
+.exp-bar{display:flex;gap:9px;margin-top:18px;flex-wrap:wrap}
+.btn-exp{display:flex;align-items:center;gap:7px;padding:8px 16px;border-radius:8px;border:1px solid;font-family:var(--font);font-size:.75rem;font-weight:600;cursor:pointer;transition:all .14s}
+.btn-exp.g{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.25);color:var(--neon3)}
+.btn-exp.g:hover{background:rgba(16,185,129,.15)}
+.btn-exp.b{background:rgba(0,212,255,.08);border-color:rgba(0,212,255,.2);color:var(--neon)}
+.btn-exp.b:hover{background:rgba(0,212,255,.14)}
+
+/* TOAST */
+#toast{position:fixed;bottom:22px;right:22px;z-index:9999;background:var(--bg3);border:1px solid var(--border2);border-radius:9px;padding:11px 16px;font-size:.76rem;color:var(--text);box-shadow:0 4px 20px rgba(0,0,0,.5);transform:translateY(70px);opacity:0;transition:all .3s;pointer-events:none;display:flex;align-items:center;gap:7px;max-width:280px}
+#toast.show{transform:translateY(0);opacity:1}
+#toast.ok .tdot{background:var(--neon3)}
+#toast.err .tdot{background:var(--danger)}
+.tdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+
+/* OVERLAY */
+#ov{display:none;position:fixed;inset:0;z-index:998;background:rgba(6,13,27,.88);backdrop-filter:blur(4px);flex-direction:column;align-items:center;justify-content:center;gap:14px}
+#ov.show{display:flex}
+.ov-ring{width:50px;height:50px;border:3px solid var(--border2);border-top-color:var(--neon);border-radius:50%;animation:spin .8s linear infinite}
+.ov-txt{font-size:.83rem;color:var(--text2);font-family:var(--mono)}
+.ov-sub{font-size:.7rem;color:var(--text3)}
+</style>
+</head>
+<body>
+<div id="toast"><span class="tdot"></span><span id="tmsg"></span></div>
+<div id="ov"><div class="ov-ring"></div><div class="ov-txt">Calculando Índice de Moran…</div><div class="ov-sub" id="osub">Construyendo matriz de pesos</div></div>
+
+<div class="shell">
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sb-logo">
+    <div class="sb-glyph">🗺️</div>
+    <div class="sb-title">GeoMoran</div>
+    <div class="sb-sub">Spatial Autocorrelation Analyst</div>
+  </div>
+  <div class="sb-body">
+    <div>
+      <div class="s-lbl">Dataset</div>
+      <div class="upload-zone" id="uz">
+        <input type="file" id="fi" accept=".geojson,.json,.csv,.xlsx" multiple/>
+        <div class="upload-icon">📂</div>
+        <div class="upload-text"><strong>Subir archivo</strong><br>o arrastra aquí</div>
+        <div class="upload-hint">GeoJSON · CSV · XLSX</div>
+      </div>
+      <div id="fl"></div>
+    </div>
+    <div id="vs" style="display:none">
+      <div class="s-lbl">Variable de análisis</div>
+      <div class="s-fl">Columna numérica a analizar</div>
+      <div class="s-wrap"><select class="s-select" id="vsel"></select></div>
+    </div>
+    <div>
+      <div class="s-lbl">Matriz de pesos W</div>
+      <div class="s-wrap"><select class="s-select" id="msel">
+        <option value="queen">Queen (8 vecinos)</option>
+        <option value="rook">Rook (4 vecinos)</option>
+        <option value="knn">KNN (K más cercanos)</option>
+      </select></div>
+      <div id="kf" style="display:none;margin-top:8px">
+        <div class="s-fl">K vecinos: <span id="kv">5</span></div>
+        <input type="range" class="s-slider" id="ks" min="3" max="15" value="5"/>
+      </div>
+    </div>
+    <div>
+      <div class="s-lbl">Inferencia estadística</div>
+      <div class="s-fl">Permutaciones: <span id="pv">999</span></div>
+      <input type="range" class="s-slider" id="ps" min="99" max="999" step="100" value="999" style="margin-bottom:10px"/>
+      <div class="s-fl">Nivel de significancia α</div>
+      <div class="s-wrap"><select class="s-select" id="ss">
+        <option value="0.05" selected>α = 0.05</option>
+        <option value="0.01">α = 0.01</option>
+        <option value="0.10">α = 0.10</option>
+      </select></div>
+    </div>
+    <button class="btn-run" id="rb" onclick="run()">
+      <span class="spinner" id="bsp"></span>
+      <span id="btxt">▶  Ejecutar análisis</span>
+    </button>
+  </div>
+  <div class="sb-foot">GeoMoran Analyst v1.0<br>PySAL · GeoPandas · FastAPI<br>Proyecto universitario</div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+  <header class="topbar">
+    <div class="tb-left">
+      <span class="tb-title">Análisis de Autocorrelación Espacial</span>
+      <span class="tb-badge">LISA · Moran I</span>
+    </div>
+    <div class="tb-right">
+      <div id="sDot"></div><span id="sTxt">Sin dataset</span>
+      <button class="tb-btn" onclick="expExcel()">⬇ Excel</button>
+      <button class="tb-btn" onclick="expGeo()">⬇ GeoJSON</button>
+    </div>
+  </header>
+  <div class="content">
+
+    <!-- WELCOME -->
+    <div class="welcome" id="ws">
+      <div class="w-hero">
+        <div class="w-eyebrow">// Estadística Espacial</div>
+        <h1 class="w-h1">GeoMoran<br><span>Analyst</span></h1>
+        <p class="w-sub">Calcula el Índice de Moran Global y LISA para detectar clusters espaciales, patrones de autocorrelación y outliers geográficos en tus datasets.</p>
+        <div class="w-tags">
+          <span class="w-tag">Moran I Global</span><span class="w-tag">LISA Local</span>
+          <span class="w-tag">Cluster Map</span><span class="w-tag">Moran Scatter</span>
+          <span class="w-tag">Export Excel</span><span class="w-tag">p-value · z-score</span>
+        </div>
+      </div>
+      <div class="w-cards">
+        <div class="wc"><div class="wc-ico b">📂</div><h4>Carga tu dataset</h4><p>GeoJSON, CSV con lat/lon o Excel. Detecta automáticamente las variables numéricas disponibles.</p></div>
+        <div class="wc"><div class="wc-ico p">⚙️</div><h4>Configura el análisis</h4><p>Elige la variable, tipo de matriz de pesos (Queen, Rook, KNN) y nivel de significancia α.</p></div>
+        <div class="wc"><div class="wc-ico g">📊</div><h4>Explora resultados</h4><p>Mapa coroplético, Moran Scatter Plot, Cluster Map LISA y tabla de estadísticos.</p></div>
+      </div>
+      <div class="w-ref">
+        <h3>📖 Interpretación del Índice de Moran I</h3>
+        <table class="rt">
+          <thead><tr><th>Valor I</th><th>p-valor</th><th>Tipo</th><th>Significado</th><th>Clusters LISA</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">I &gt; 0</td><td class="mono">p &lt; α</td><td><span class="tp">Positiva</span></td><td>Valores similares se agrupan geográficamente</td><td>HH y LL predominan</td></tr>
+            <tr><td class="mono">I ≈ 0</td><td class="mono">p &gt; α</td><td><span class="tr">Aleatoria</span></td><td>No hay patrón espacial significativo</td><td>Mayoría NS</td></tr>
+            <tr><td class="mono">I &lt; 0</td><td class="mono">p &lt; α</td><td><span class="tn">Negativa</span></td><td>Valores distintos entre vecinos (dispersión)</td><td>HL y LH predominan</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- RESULTS -->
+    <div class="results" id="rs">
+      <div class="mbar" id="mb"></div>
+      <div id="ib"></div>
+      <div class="cl-row" id="cr"></div>
+      <div class="tabs-nav">
+        <button class="t-btn active" onclick="tab('maps',this)">🗺️ Mapas</button>
+        <button class="t-btn" onclick="tab('scatter',this)">📉 Scatter</button>
+        <button class="t-btn" onclick="tab('cluster',this)">🎯 Clusters</button>
+        <button class="t-btn" onclick="tab('table',this)">📋 Tabla LISA</button>
+      </div>
+      <div class="tp-panel active" id="tp-maps">
+        <div class="mgrid">
+          <div class="mcard"><div class="mcard-hd"><div class="mdot" style="background:var(--neon)"></div><span class="mcard-title">Mapa Coroplético</span><span class="mcard-sub" id="csub">—</span></div><div class="mwrap" id="mc1"></div></div>
+          <div class="mcard"><div class="mcard-hd"><div class="mdot" style="background:var(--neon2)"></div><span class="mcard-title">LISA Cluster Map</span><span class="mcard-sub">p &lt; α</span></div><div class="mwrap" id="mc2"></div></div>
+        </div>
+      </div>
+      <div class="tp-panel" id="tp-scatter"><div class="ccrd"><div class="ccrd-hd"><span class="ccrd-title">Moran Scatter Plot</span></div><div id="spl" style="height:490px;padding:6px"></div></div></div>
+      <div class="tp-panel" id="tp-cluster">
+        <div class="ccrd"><div class="ccrd-hd"><span class="ccrd-title">Distribución de Clusters LISA</span></div><div id="cch" style="height:175px;padding:6px"></div></div>
+        <div class="mcard"><div class="mcard-hd"><div class="mdot" style="background:var(--neon2)"></div><span class="mcard-title">Mapa de Clusters LISA interactivo</span></div><div class="mwrap" style="height:470px" id="mc3"></div></div>
+      </div>
+      <div class="tp-panel" id="tp-table"><div class="tbl-wrap"><div class="tbl-scroll"><table class="dtbl" id="lt"><thead><tr></tr></thead><tbody></tbody></table></div></div></div>
+      <div class="exp-bar">
+        <button class="btn-exp g" onclick="expExcel()">📥 Exportar Excel (.xlsx)</button>
+        <button class="btn-exp b" onclick="expGeo()">📥 Exportar GeoJSON con LISA</button>
+      </div>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+const API='http://localhost:8000';
+const S={filename:null,variable:null,result:null,m1:null,m2:null,m3:null};
+const CC={HH:'#ef4444',LL:'#3b82f6',HL:'#f97316',LH:'#22c55e',NS:'#1e3050'};
+const CL={HH:'Alto–Alto',LL:'Bajo–Bajo',HL:'Alto–Bajo',LH:'Bajo–Alto',NS:'No significativo'};
+
+// Sliders
+document.getElementById('ps').addEventListener('input',e=>document.getElementById('pv').textContent=e.target.value);
+document.getElementById('ks').addEventListener('input',e=>document.getElementById('kv').textContent=e.target.value);
+document.getElementById('msel').addEventListener('change',e=>document.getElementById('kf').style.display=e.target.value==='knn'?'block':'none');
+
+// Toast
+function toast(m,t='ok'){
+  const el=document.getElementById('toast');
+  document.getElementById('tmsg').textContent=m;
+  el.className=`show ${t}`;
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.className='',3200);
+}
+
+// Overlay
+function ov(show,sub=''){
+  document.getElementById('ov').classList.toggle('show',show);
+  if(sub)document.getElementById('osub').textContent=sub;
+}
+
+// Status
+function st(ok,txt){
+  document.getElementById('sDot').className=ok?'ok':'err';
+  document.getElementById('sTxt').textContent=txt;
+}
+
+// Upload
+const uz=document.getElementById('uz'),fi=document.getElementById('fi');
+uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag')});
+uz.addEventListener('dragleave',()=>uz.classList.remove('drag'));
+uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('drag');if(e.dataTransfer.files.length)upload(e.dataTransfer.files[0])});
+fi.addEventListener('change',e=>{if(e.target.files.length)upload(e.target.files[0])});
+
+async function upload(file){
+  const fd=new FormData();fd.append('file',file);
+  ov(true,'Cargando y validando dataset…');
+  try{
+    const r=await fetch(`${API}/upload`,{method:'POST',body:fd});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.detail||'Error al cargar');
+    S.filename=d.filename;
+    document.getElementById('fl').innerHTML=`<div class="file-chip"><span>📄</span><span class="file-chip-name">${d.filename} · ${d.n_features} features</span><span class="file-chip-rm" onclick="clrFile()">✕</span></div>`;
+    const sel=document.getElementById('vsel');
+    sel.innerHTML=d.numeric_columns.map(c=>`<option value="${c}">${c}</option>`).join('');
+    document.getElementById('vs').style.display='block';
+    S.variable=d.numeric_columns[0];
+    sel.addEventListener('change',e=>S.variable=e.target.value);
+    st(true,`${d.filename} · ${d.n_features} unidades`);
+    toast(`Dataset cargado: ${d.n_features} unidades, ${d.numeric_columns.length} variables`,'ok');
+  }catch(e){toast(e.message,'err');st(false,'Error');}
+  finally{ov(false);}
+}
+function clrFile(){S.filename=null;document.getElementById('fl').innerHTML='';document.getElementById('vs').style.display='none';fi.value='';st(false,'Sin dataset');}
+
+// Run
+async function run(){
+  if(!S.filename){toast('Primero sube un dataset','err');return;}
+  const rb=document.getElementById('rb');
+  document.getElementById('bsp').style.display='block';
+  document.getElementById('btxt').textContent='Calculando…';
+  rb.classList.add('loading');
+  const steps=['Construyendo matriz de pesos…','Calculando Moran Global…','Calculando LISA local…','Generando visualizaciones…'];
+  let si=0;ov(true,steps[0]);
+  const t=setInterval(()=>{si++;if(si<steps.length)document.getElementById('osub').textContent=steps[si];},900);
+  try{
+    const body={
+      filename:S.filename,
+      variable:document.getElementById('vsel').value,
+      method:document.getElementById('msel').value,
+      k:document.getElementById('ks').value,
+      permutations:document.getElementById('ps').value,
+      significance:document.getElementById('ss').value,
+    };
+    S.variable=body.variable;
+    const r=await fetch(`${API}/analyze`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.detail||'Error en análisis');
+    S.result=d;
+    clearInterval(t);
+    render(d);
+    toast('Análisis completado ✓','ok');
+  }catch(e){clearInterval(t);toast(e.message,'err');st(false,'Error');}
+  finally{ov(false);document.getElementById('bsp').style.display='none';document.getElementById('btxt').textContent='▶  Ejecutar análisis';rb.classList.remove('loading');}
+}
+
+// Render
+function render(d){
+  document.getElementById('ws').style.display='none';
+  document.getElementById('rs').style.display='block';
+  const g=d.global;
+  // Metrics
+  const mc=(lbl,val,sub,c)=>`<div class="mc"><div class="mc-acc" style="background:${c}"></div><div class="mc-lbl">${lbl}</div><div class="mc-val">${val}</div><div class="mc-sub">${sub}</div></div>`;
+  document.getElementById('mb').innerHTML=
+    mc('Índice de Moran I',g.I.toFixed(4),`E[I] = ${g.EI.toFixed(4)}`,'var(--neon)')+
+    mc('Z-score',g.z_norm.toFixed(3),'Distribución normal','var(--neon2)')+
+    mc('P-valor',g.p_norm.toFixed(4),g.significant?'<span style="color:var(--neon3)">✦ Significativo</span>':'<span style="color:var(--neon4)">No significativo</span>',g.significant?'var(--neon3)':'var(--neon4)')+
+    mc('P simulado',g.p_sim.toFixed(4),`${d.n} unidades · ${document.getElementById('ps').value} perm.`,'var(--neon4)');
+  // Interp
+  let it,itl,ib;
+  if(!g.significant){it='rnd';itl='Sin autocorrelación espacial significativa';ib=`I = ${g.I.toFixed(4)}, p = ${g.p_norm.toFixed(4)}. El patrón no es estadísticamente diferente de uno aleatorio.`;}
+  else if(g.I>0){it='pos';itl='✦ Autocorrelación espacial POSITIVA detectada';ib=`I = ${g.I.toFixed(4)} (p = ${g.p_norm.toFixed(4)}). Unidades con valores similares se agrupan geográficamente. Clusters espaciales significativos.`;}
+  else{it='neg';itl='⚡ Autocorrelación espacial NEGATIVA detectada';ib=`I = ${g.I.toFixed(4)} (p = ${g.p_norm.toFixed(4)}). Valores distintos alternan entre vecinos. Patrón de dispersión espacial.`;}
+  document.getElementById('ib').innerHTML=`<div class="interp ${it}"><div class="i-dot"></div><div><div class="i-title">${itl}</div><div class="i-body">${ib}</div></div></div>`;
+  // Clusters legend
+  const cc=d.cluster_counts;
+  document.getElementById('cr').innerHTML=Object.entries(CC).map(([cl,col])=>`<div class="cl-chip"><div class="cl-dot" style="background:${col}"></div><span>${cl} · ${CL[cl]}</span><span class="cl-n">${cc[cl]||0}</span></div>`).join('');
+  document.getElementById('csub').textContent=d.variable;
+  renderMaps(d);renderScatter(d);renderClBar(d);renderTable(d);
+}
+
+// Maps
+function renderMaps(d){
+  const gj=d.geojson;
+  const coords=[];
+  gj.features.forEach(f=>{
+    const g=f.geometry;if(!g)return;
+    const pts=g.type==='Polygon'?g.coordinates[0]:g.type==='MultiPolygon'?g.coordinates.flat(2):g.type==='Point'?[g.coordinates]:[];
+    pts.forEach(p=>coords.push([p[1],p[0]]));
+  });
+  const bounds=coords.length?L.latLngBounds(coords):[[0,0],[1,1]];
+  const vals=gj.features.map(f=>f.properties[d.variable]||0);
+  const vmin=Math.min(...vals),vmax=Math.max(...vals);
+  function cc(v){const t=(v-vmin)/(vmax-vmin+1e-9);return t<.2?'#1e3a8a':t<.4?'#1d4ed8':t<.6?'#60a5fa':t<.8?'#f97316':'#ef4444';}
+  const tile='https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+  ['m1','m2','m3'].forEach(k=>{if(S[k]){S[k].remove();S[k]=null;}});
+  // Map 1 choropleth
+  S.m1=L.map('mc1',{attributionControl:false});
+  L.tileLayer(tile,{attribution:'© CARTO'}).addTo(S.m1);
+  L.geoJSON(gj,{style:f=>({fillColor:cc(f.properties[d.variable]||0),color:'#0c1628',weight:.8,fillOpacity:.82}),
+    onEachFeature:(f,l)=>l.bindTooltip(`<b>${d.variable}</b>: ${f.properties[d.variable]!=null?Number(f.properties[d.variable]).toFixed(4):'N/A'}`,{sticky:true})
+  }).addTo(S.m1);S.m1.fitBounds(bounds,{padding:[8,8]});
+  // Map 2 LISA
+  S.m2=L.map('mc2',{attributionControl:false});
+  L.tileLayer(tile,{attribution:'© CARTO'}).addTo(S.m2);
+  L.geoJSON(gj,{style:f=>({fillColor:CC[f.properties.LISA_cluster]||'#1e3050',color:'#0c1628',weight:.8,fillOpacity:.85}),
+    onEachFeature:(f,l)=>{const p=f.properties;l.bindTooltip(`<b>${p.LISA_cluster}</b> · ${CL[p.LISA_cluster]||''}<br>LISA I: ${p.LISA_I!=null?Number(p.LISA_I).toFixed(4):'–'}<br>p: ${p.LISA_p!=null?Number(p.LISA_p).toFixed(4):'–'}`,{sticky:true});}
+  }).addTo(S.m2);S.m2.fitBounds(bounds,{padding:[8,8]});
+  // Map 3 cluster detail
+  S.m3=L.map('mc3',{attributionControl:false});
+  L.tileLayer(tile,{attribution:'© CARTO'}).addTo(S.m3);
+  L.geoJSON(gj,{style:f=>({fillColor:CC[f.properties.LISA_cluster]||'#1e3050',color:'#0c1628',weight:.8,fillOpacity:.85}),
+    onEachFeature:(f,l)=>{const p=f.properties;l.bindPopup(`<div style="font:12px Inter,sans-serif;min-width:150px"><b style="color:${CC[p.LISA_cluster]||'#fff'}">${p.LISA_cluster} — ${CL[p.LISA_cluster]||''}</b><br>${d.variable}: <b>${p[d.variable]!=null?Number(p[d.variable]).toFixed(4):'–'}</b><br>LISA I: ${p.LISA_I!=null?Number(p.LISA_I).toFixed(4):'–'}<br>p-valor: ${p.LISA_p!=null?Number(p.LISA_p).toFixed(4):'–'}</div>`);}
+  }).addTo(S.m3);S.m3.fitBounds(bounds,{padding:[8,8]});
+}
+
+// Scatter
+function renderScatter(d){
+  const traces=Object.entries(CC).map(([cl,col])=>{
+    const pts=d.scatter.filter(p=>p.cluster===cl);
+    return{x:pts.map(p=>p.x),y:pts.map(p=>p.y),mode:'markers',type:'scatter',name:`${cl} · ${CL[cl]}`,
+      marker:{color:col,size:7,opacity:.85,line:{color:'#060d1b',width:.5}},
+      hovertemplate:`<b>${cl}</b><br>z: %{x:.3f}<br>lag: %{y:.3f}<extra></extra>`};
+  });
+  const I=d.global.I,xs=d.scatter.map(p=>p.x),xr=[Math.min(...xs)-.2,Math.max(...xs)+.2];
+  traces.push({x:xr,y:xr.map(x=>I*x),mode:'lines',type:'scatter',line:{color:'#00d4ff',width:2,dash:'dot'},name:`I = ${I.toFixed(4)}`,hoverinfo:'skip'});
+  Plotly.newPlot('spl',traces,{
+    paper_bgcolor:'transparent',plot_bgcolor:'#0c1628',
+    font:{family:'Inter',color:'#94a3b8'},
+    xaxis:{title:`${d.variable} (z)`,gridcolor:'#162035',zerolinecolor:'#1e3050',zerolinewidth:1.5},
+    yaxis:{title:'Lag espacial',gridcolor:'#162035',zerolinecolor:'#1e3050',zerolinewidth:1.5},
+    title:{text:`Moran Scatter Plot  ·  I = ${I.toFixed(4)}  ·  p = ${d.global.p_norm.toFixed(4)}`,font:{size:13,color:'#e2e8f0'}},
+    legend:{bgcolor:'rgba(12,22,40,.8)',bordercolor:'#162035',borderwidth:1,font:{size:11}},
+    margin:{l:58,r:22,t:48,b:52},
+    shapes:[
+      {type:'line',x0:0,x1:0,y0:0,y1:1,yref:'paper',line:{color:'#1e3050',width:1,dash:'dot'}},
+      {type:'line',y0:0,y1:0,x0:0,x1:1,xref:'paper',line:{color:'#1e3050',width:1,dash:'dot'}},
+    ],
+  },{responsive:true,displayModeBar:false});
+}
+
+// Cluster bar
+function renderClBar(d){
+  const cc=d.cluster_counts,ord=['HH','LL','HL','LH','NS'];
+  const tot=ord.reduce((a,c)=>a+(cc[c]||0),0);
+  Plotly.newPlot('cch',[{
+    x:ord.map(c=>cc[c]||0),y:ord.map(c=>`${c} · ${CL[c]}`),type:'bar',orientation:'h',
+    marker:{color:ord.map(c=>CC[c]),opacity:.85},
+    text:ord.map(c=>`${cc[c]||0} (${tot?((cc[c]||0)/tot*100).toFixed(1):0}%)`),
+    textposition:'outside',textfont:{color:'#94a3b8',size:11},
+    hovertemplate:'<b>%{y}</b>: %{x}<extra></extra>',
+  }],{
+    paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+    font:{family:'Inter',color:'#94a3b8'},
+    xaxis:{gridcolor:'#162035',showgrid:true,zeroline:false},
+    yaxis:{gridcolor:'none'},
+    margin:{l:175,r:75,t:8,b:28},
+  },{responsive:true,displayModeBar:false});
+}
+
+// Table
+function renderTable(d){
+  const fs=d.geojson.features,tbl=document.getElementById('lt');
+  const cols=['LISA_I','LISA_p','LISA_cluster',d.variable];
+  tbl.querySelector('thead tr').innerHTML=cols.map(c=>`<th>${c}</th>`).join('');
+  tbl.querySelector('tbody').innerHTML=fs.map(f=>{
+    const p=f.properties,cl=p.LISA_cluster||'NS',col=CC[cl];
+    return`<tr><td class="mono">${p.LISA_I!=null?Number(p.LISA_I).toFixed(5):'–'}</td><td class="mono">${p.LISA_p!=null?Number(p.LISA_p).toFixed(5):'–'}</td><td><span class="ctag" style="background:${col}22;color:${col};border:1px solid ${col}44">${cl}</span></td><td class="mono">${p[d.variable]!=null?Number(p[d.variable]).toFixed(4):'–'}</td></tr>`;
+  }).join('');
+}
+
+// Tabs
+function tab(id,btn){
+  document.querySelectorAll('.tp-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.t-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tp-'+id).classList.add('active');
+  btn.classList.add('active');
+  setTimeout(()=>{
+    if(id==='maps'){S.m1&&S.m1.invalidateSize();S.m2&&S.m2.invalidateSize();}
+    if(id==='cluster')S.m3&&S.m3.invalidateSize();
+  },50);
+}
+
+// Export
+function expGeo(){
+  if(!S.result){toast('Ejecuta el análisis primero','err');return;}
+  const b=new Blob([JSON.stringify(S.result.geojson,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`lisa_${S.filename||'result'}.geojson`;a.click();
+  toast('GeoJSON exportado ✓');
+}
+async function expExcel(){
+  if(!S.result){toast('Ejecuta el análisis primero','err');return;}
+  try{
+    const r=await fetch(`${API}/export/excel`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:S.filename,variable:S.variable,global_result:S.result.global})});
+    if(!r.ok)throw new Error('Error al exportar');
+    const b=await r.blob();const a=document.createElement('a');
+    a.href=URL.createObjectURL(b);a.download=`moran_${S.filename||'result'}.xlsx`;a.click();
+    toast('Excel exportado ✓');
+  }catch(e){toast(e.message,'err');}
+}
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.ctrlKey)run();});
+</script>
+</body>
+</html>
